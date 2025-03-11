@@ -1,0 +1,23 @@
+# Ignore system files
+*.log
+*.bak
+*.swp
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.cache/
+node_modules/
+.env
+# Node.js dependencies
+node_modules/
+
+# Environment files
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
