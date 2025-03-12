@@ -1,5 +1,5 @@
 const express = require("express");
-const {submitAssignment, getSubmissionsByAssignment,getAllSubmissions,gradeSubmission, updateSubmission, deleteSubmission,} = require("../controllers/submissionController");
+const {submitAssignment, getSubmissionsByAssignment,getAllSubmissions,gradeSubmission,  deleteSubmission,} = require("../controllers/submissionController");
 const { authMiddleware, authorizeRoles } = require("../middleware/authMiddleware");
 const router = express.Router();
 
@@ -14,9 +14,6 @@ router.get("/", authMiddleware, authorizeRoles("admin"), getAllSubmissions);
 
 // ✅ Admin grades a submission
 router.put("/:submissionId/grade", authMiddleware, authorizeRoles("admin"), gradeSubmission);
-
-// ✅ Student updates their submission (Before Deadline)
-router.put("/:submissionId/update", authMiddleware, updateSubmission);
 
 // ✅ Delete a submission (Allowed before deadline)
 router.delete("/:submissionId/delete", authMiddleware, deleteSubmission);

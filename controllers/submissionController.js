@@ -1,37 +1,46 @@
-const Submission = require('../models/Submission');
-const Assignment = require('../models/Assignment'); // ✅ it ensure that a student can edit a assg after submitting
-// ✅ Student submits an assignment
+const Submission = require("../models/Submission");
+const Assignment = require("../models/Assignment");
+
+// ✅ Submit an assignment (Students)
 exports.submitAssignment = async (req, res) => {
   try {
     const { assignmentId, content } = req.body;
 
     if (!content) {
-      return res.status(400).json({ message: 'Content is required' });
+      return res.status(400).json({ message: "Content is required" });
+    }
+
+    // Check if the assignment exists and if the deadline has passed
+    const assignment = await Assignment.findById(assignmentId);
+    if (!assignment) {
+      return res.status(404).json({ message: "Assignment not found" });
+    }
+
+    if (new Date() > new Date(assignment.dueDate)) {
+      return res.status(400).json({ message: "Submission deadline has passed." });
     }
 
     const submission = await Submission.create({
       assignmentId,
       studentId: req.user.id,
-      content
+      content,
     });
 
-    res.status(201).json({ message: 'Assignment submitted successfully', submission });
+    res.status(201).json({ message: "Assignment submitted successfully", submission });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// ✅ Get submissions based on user role (admin can see all, students only see theirs)
+// ✅ Get submissions by assignment (Admins see all, Students see theirs)
 exports.getSubmissionsByAssignment = async (req, res) => {
   try {
     const { assignmentId } = req.params;
     let submissions;
 
     if (req.user.role === "admin") {
-      // Admins can see all submissions for an assignment
       submissions = await Submission.find({ assignmentId }).populate("studentId", "name email");
     } else {
-      // Students can only see their own submission
       submissions = await Submission.find({ assignmentId, studentId: req.user.id }).populate("studentId", "name email");
     }
 
@@ -41,14 +50,31 @@ exports.getSubmissionsByAssignment = async (req, res) => {
   }
 };
 
-// ✅ Admin grades a submission
+// ✅ Get all submissions (Admin Dashboard)
+exports.getAllSubmissions = async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied. Only admins can view all submissions." });
+    }
+
+    const submissions = await Submission.find()
+      .populate("studentId", "name email")
+      .populate("assignmentId", "title dueDate");
+
+    res.status(200).json(submissions);
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// ✅ Grade a submission (Admin Only)
 exports.gradeSubmission = async (req, res) => {
   try {
     const { submissionId } = req.params;
     const { grade, feedback } = req.body;
 
     if (grade < 0 || grade > 100) {
-      return res.status(400).json({ message: 'Grade must be between 0 and 100' });
+      return res.status(400).json({ message: "Grade must be between 0 and 100" });
     }
 
     const submission = await Submission.findByIdAndUpdate(
@@ -58,74 +84,43 @@ exports.gradeSubmission = async (req, res) => {
     );
 
     if (!submission) {
-      return res.status(404).json({ message: 'Submission not found' });
-    }
-
-    res.status(200).json({ message: 'Submission graded successfully', submission });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-exports.updateSubmission = async (req, res) => {
-  try {
-    const { submissionId } = req.params;
-    const { content } = req.body;
-
-    const submission = await Submission.findById(submissionId);
-
-    if (!submission) {
       return res.status(404).json({ message: "Submission not found" });
     }
 
-    // Check if the user is the owner of the submission
-    if (submission.studentId.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Unauthorized to edit this submission" });
-    }
-
-    // Allow update only if within the deadline
-    const assignment = await Assignment.findById(submission.assignmentId);
-    if (assignment && new Date() > new Date(assignment.deadline)) {
-      return res.status(400).json({ message: "Deadline has passed. You cannot edit this submission." });
-    }
-
-    submission.content = content || submission.content;
-    await submission.save();
-
-    res.status(200).json({ message: "Submission updated successfully", submission });
+    res.status(200).json({ message: "Submission graded successfully", submission });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+// ✅ Delete a submission (Allowed before the deadline)
 exports.deleteSubmission = async (req, res) => {
   try {
     const { submissionId } = req.params;
 
-    // Find the submission
     const submission = await Submission.findById(submissionId);
     if (!submission) {
       return res.status(404).json({ message: "Submission not found" });
     }
 
-    // Find the related assignment to check the deadline
     const assignment = await Assignment.findById(submission.assignmentId);
     if (!assignment) {
       return res.status(404).json({ message: "Assignment not found" });
     }
 
     // Prevent deletion if the deadline has passed
-    if (new Date() > assignment.deadline) {
-      return res.status(400).json({ message: "Cannot delete submission after the deadline" });
+    if (new Date() > new Date(assignment.dueDate)) {
+      return res.status(400).json({ message: "Cannot delete submission after the deadline." });
     }
 
-    // Allow students to delete only their own submission
+    // Ensure the student owns the submission
     if (req.user.role !== "admin" && submission.studentId.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Access denied. You can only delete your own submission before the deadline" });
+      return res.status(403).json({ message: "You can only delete your own submission before the deadline." });
     }
 
-    // Delete the submission
     await Submission.findByIdAndDelete(submissionId);
     res.status(200).json({ message: "Submission deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
