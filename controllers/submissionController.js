@@ -96,4 +96,36 @@ exports.updateSubmission = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+exports.deleteSubmission = async (req, res) => {
+  try {
+    const { submissionId } = req.params;
 
+    // Find the submission
+    const submission = await Submission.findById(submissionId);
+    if (!submission) {
+      return res.status(404).json({ message: "Submission not found" });
+    }
+
+    // Find the related assignment to check the deadline
+    const assignment = await Assignment.findById(submission.assignmentId);
+    if (!assignment) {
+      return res.status(404).json({ message: "Assignment not found" });
+    }
+
+    // Prevent deletion if the deadline has passed
+    if (new Date() > assignment.deadline) {
+      return res.status(400).json({ message: "Cannot delete submission after the deadline" });
+    }
+
+    // Allow students to delete only their own submission
+    if (req.user.role !== "admin" && submission.studentId.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Access denied. You can only delete your own submission before the deadline" });
+    }
+
+    // Delete the submission
+    await Submission.findByIdAndDelete(submissionId);
+    res.status(200).json({ message: "Submission deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
