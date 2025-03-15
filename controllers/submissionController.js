@@ -124,3 +124,18 @@ exports.deleteSubmission = async (req, res) => {
   }
 };
 
+// ✅ Get graded submissions for the logged-in student
+exports.getMyResults = async (req, res) => {
+  try {
+    const submissions = await Submission.find({ 
+      studentId: req.user.id, 
+      grade: { $ne: null } // Fetch only graded assignments
+    })
+    .populate("assignmentId", "title") // Get assignment title
+    .select("assignmentId grade feedback"); // Select only necessary fields
+
+    res.json(submissions);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+};
