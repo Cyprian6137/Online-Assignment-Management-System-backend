@@ -14,6 +14,11 @@ exports.createAssignment = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized access" });
     }
 
+    const existingAssignment = await Assignment.findOne({ title, createdBy: req.user.id });
+    if (existingAssignment) {
+      return res.status(400).json({ message: "An assignment with this title already exists" });
+    }
+
     const assignment = await Assignment.create({
       title,
       description,
@@ -28,10 +33,16 @@ exports.createAssignment = async (req, res) => {
   }
 };
 
-// ✅ Get all assignments (Students & Admins)
+// ✅ Get assignments created by the logged-in admin only
 exports.getAssignments = async (req, res) => {
   try {
-    const assignments = await Assignment.find().populate("createdBy", "name email");
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ message: "Unauthorized access" });
+    }
+
+    // Fetch assignments created only by the logged-in admin
+    const assignments = await Assignment.find({ createdBy: req.user.id }).populate("createdBy", "name email");
+
     res.status(200).json(assignments);
   } catch (error) {
     console.error("Error fetching assignments:", error.message);
@@ -39,7 +50,7 @@ exports.getAssignments = async (req, res) => {
   }
 };
 
-// ✅ Get a single assignment
+// ✅ Get a single assignment (Admin can only see their own)
 exports.getAssignmentById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -52,6 +63,11 @@ exports.getAssignmentById = async (req, res) => {
 
     if (!assignment) {
       return res.status(404).json({ message: "Assignment not found" });
+    }
+
+    // Ensure only the admin who created it can view
+    if (req.user.id !== assignment.createdBy.toString()) {
+      return res.status(403).json({ message: "Unauthorized to view this assignment" });
     }
 
     res.json(assignment);
@@ -77,12 +93,20 @@ exports.updateAssignment = async (req, res) => {
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    // ✅ Ensure only the admin who created it can update
+    // Ensure only the admin who created it can update
     if (req.user.id !== assignment.createdBy.toString()) {
       return res.status(403).json({ message: "Unauthorized to edit this assignment" });
     }
 
-    // ✅ Update fields
+    // Prevent duplicate assignment titles for the same admin
+    if (title && title !== assignment.title) {
+      const existingAssignment = await Assignment.findOne({ title, createdBy: req.user.id });
+      if (existingAssignment) {
+        return res.status(400).json({ message: "An assignment with this title already exists" });
+      }
+    }
+
+    // Update fields
     assignment.title = title || assignment.title;
     assignment.description = description || assignment.description;
     assignment.dueDate = dueDate || assignment.dueDate;
@@ -110,7 +134,7 @@ exports.deleteAssignment = async (req, res) => {
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    // ✅ Ensure only the admin who created it can delete
+    // Ensure only the admin who created it can delete
     if (req.user.id !== assignment.createdBy.toString()) {
       return res.status(403).json({ message: "Unauthorized to delete this assignment" });
     }
