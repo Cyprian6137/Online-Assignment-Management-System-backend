@@ -32,17 +32,22 @@ exports.submitAssignment = async (req, res) => {
   }
 };
 
-// ✅ Get submissions by assignment (Admins see all, Students see theirs)
+// ✅ Get submissions by assignment (Admins only see their assignments)
 exports.getSubmissionsByAssignment = async (req, res) => {
   try {
     const { assignmentId } = req.params;
-    let submissions;
-
-    if (req.user.role === "admin") {
-      submissions = await Submission.find({ assignmentId }).populate("studentId", "name email");
-    } else {
-      submissions = await Submission.find({ assignmentId, studentId: req.user.id }).populate("studentId", "name email");
+    
+    const assignment = await Assignment.findById(assignmentId);
+    if (!assignment) {
+      return res.status(404).json({ message: "Assignment not found" });
     }
+
+    if (req.user.role === "admin" && assignment.createdBy.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Access denied. You can only view submissions for your own assignments." });
+    }
+
+    const submissions = await Submission.find({ assignmentId, ...(req.user.role !== "admin" && { studentId: req.user.id }) })
+      .populate("studentId", "name email");
 
     res.status(200).json(submissions);
   } catch (error) {
@@ -50,14 +55,15 @@ exports.getSubmissionsByAssignment = async (req, res) => {
   }
 };
 
-// ✅ Get all submissions (Admin Dashboard)
+// ✅ Get all submissions (Admins only see their assignments' submissions)
 exports.getAllSubmissions = async (req, res) => {
   try {
     if (req.user.role !== "admin") {
-      return res.status(403).json({ message: "Access denied. Only admins can view all submissions." });
+      return res.status(403).json({ message: "Access denied. Only admins can view submissions." });
     }
 
-    const submissions = await Submission.find()
+    const assignments = await Assignment.find({ createdBy: req.user.id }).select("_id");
+    const submissions = await Submission.find({ assignmentId: { $in: assignments.map(a => a._id) } })
       .populate("studentId", "name email")
       .populate("assignmentId", "title dueDate");
 
@@ -67,7 +73,7 @@ exports.getAllSubmissions = async (req, res) => {
   }
 };
 
-// ✅ Grade a submission (Admin Only)
+// ✅ Grade a submission (Admins can only grade their assignments)
 exports.gradeSubmission = async (req, res) => {
   try {
     const { submissionId } = req.params;
@@ -77,21 +83,25 @@ exports.gradeSubmission = async (req, res) => {
       return res.status(400).json({ message: "Grade must be between 0 and 100" });
     }
 
-    const submission = await Submission.findByIdAndUpdate(
-      submissionId,
-      { grade, feedback },
-      { new: true }
-    );
-
+    const submission = await Submission.findById(submissionId).populate("assignmentId");
     if (!submission) {
       return res.status(404).json({ message: "Submission not found" });
     }
+
+    if (req.user.role === "admin" && submission.assignmentId.createdBy.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Access denied. You can only grade submissions for assignments you created." });
+    }
+
+    submission.grade = grade;
+    submission.feedback = feedback;
+    await submission.save();
 
     res.status(200).json({ message: "Submission graded successfully", submission });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 // ✅ Delete a submission (Allowed before the deadline)
 exports.deleteSubmission = async (req, res) => {
   try {
@@ -131,8 +141,8 @@ exports.getMyResults = async (req, res) => {
       studentId: req.user.id, 
       grade: { $ne: null } // Fetch only graded assignments
     })
-    .populate("assignmentId", "title") // Get assignment title
-    .select("assignmentId grade feedback"); // Select only necessary fields
+    .populate("assignmentId", "title")
+    .select("assignmentId grade feedback");
 
     res.json(submissions);
   } catch (error) {
