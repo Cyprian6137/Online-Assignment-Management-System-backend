@@ -10,7 +10,6 @@ exports.submitAssignment = async (req, res) => {
       return res.status(400).json({ message: "Content is required" });
     }
 
-    // Check if the assignment exists and if the deadline has passed
     const assignment = await Assignment.findById(assignmentId);
     if (!assignment) {
       return res.status(404).json({ message: "Assignment not found" });
@@ -18,6 +17,11 @@ exports.submitAssignment = async (req, res) => {
 
     if (new Date() > new Date(assignment.dueDate)) {
       return res.status(400).json({ message: "Submission deadline has passed." });
+    }
+
+    const existingSubmission = await Submission.findOne({ assignmentId, studentId: req.user.id });
+    if (existingSubmission) {
+      return res.status(400).json({ message: "You have already submitted this assignment." });
     }
 
     const submission = await Submission.create({
@@ -32,37 +36,45 @@ exports.submitAssignment = async (req, res) => {
   }
 };
 
-// ✅ Get submissions by assignment (Admins only see their assignments)
+// ✅ Get submissions by assignment (Admins & Lecturers)
 exports.getSubmissionsByAssignment = async (req, res) => {
   try {
     const { assignmentId } = req.params;
-    
     const assignment = await Assignment.findById(assignmentId);
     if (!assignment) {
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    if (req.user.role === "admin" && assignment.createdBy.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Access denied. You can only view submissions for your own assignments." });
+    if (req.user.role === "admin" || req.user.role === "lecturer") {
+      const submissions = await Submission.find({ assignmentId })
+        .populate("studentId", "name email");
+      return res.status(200).json(submissions);
     }
 
-    const submissions = await Submission.find({ assignmentId, ...(req.user.role !== "admin" && { studentId: req.user.id }) })
+    const studentSubmission = await Submission.findOne({ assignmentId, studentId: req.user.id })
       .populate("studentId", "name email");
 
-    res.status(200).json(submissions);
+    if (!studentSubmission) {
+      return res.status(403).json({ message: "No submission found for you." });
+    }
+
+    res.status(200).json(studentSubmission);
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// ✅ Get all submissions (Admins only see their assignments' submissions)
+// ✅ Get all submissions (Admins & Lecturers)
 exports.getAllSubmissions = async (req, res) => {
   try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({ message: "Access denied. Only admins can view submissions." });
+    if (!["admin", "lecturer"].includes(req.user.role)) {
+      return res.status(403).json({ message: "Access denied." });
     }
 
-    const assignments = await Assignment.find({ createdBy: req.user.id }).select("_id");
+    const assignments = req.user.role === "admin"
+      ? await Assignment.find().select("_id")
+      : await Assignment.find({ createdBy: req.user.id }).select("_id");
+
     const submissions = await Submission.find({ assignmentId: { $in: assignments.map(a => a._id) } })
       .populate("studentId", "name email")
       .populate("assignmentId", "title dueDate");
@@ -73,7 +85,7 @@ exports.getAllSubmissions = async (req, res) => {
   }
 };
 
-// ✅ Grade a submission (Admins can only grade their assignments)
+// ✅ Grade a submission (Admins & Lecturers)
 exports.gradeSubmission = async (req, res) => {
   try {
     const { submissionId } = req.params;
@@ -88,8 +100,11 @@ exports.gradeSubmission = async (req, res) => {
       return res.status(404).json({ message: "Submission not found" });
     }
 
-    if (req.user.role === "admin" && submission.assignmentId.createdBy.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Access denied. You can only grade submissions for assignments you created." });
+    if (req.user.role !== "admin" && req.user.role !== "lecturer") {
+      return res.status(403).json({ message: "Only lecturers and admins can grade submissions" });
+    }
+    if (req.user.role === "lecturer" && submission.assignmentId.createdBy.toString() !== req.user.id) {
+      return res.status(403).json({ message: "You can only grade your own assignments" });
     }
 
     submission.grade = grade;
@@ -102,11 +117,10 @@ exports.gradeSubmission = async (req, res) => {
   }
 };
 
-// ✅ Delete a submission (Allowed before the deadline)
+// ✅ Delete a submission (Only before the deadline)
 exports.deleteSubmission = async (req, res) => {
   try {
     const { submissionId } = req.params;
-
     const submission = await Submission.findById(submissionId);
     if (!submission) {
       return res.status(404).json({ message: "Submission not found" });
@@ -117,12 +131,10 @@ exports.deleteSubmission = async (req, res) => {
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    // Prevent deletion if the deadline has passed
     if (new Date() > new Date(assignment.dueDate)) {
       return res.status(400).json({ message: "Cannot delete submission after the deadline." });
     }
 
-    // Ensure the student owns the submission
     if (req.user.role !== "admin" && submission.studentId.toString() !== req.user.id) {
       return res.status(403).json({ message: "You can only delete your own submission before the deadline." });
     }
@@ -139,13 +151,13 @@ exports.getMyResults = async (req, res) => {
   try {
     const submissions = await Submission.find({ 
       studentId: req.user.id, 
-      grade: { $ne: null } // Fetch only graded assignments
+      grade: { $ne: null }
     })
     .populate("assignmentId", "title")
     .select("assignmentId grade feedback");
 
     res.json(submissions);
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };

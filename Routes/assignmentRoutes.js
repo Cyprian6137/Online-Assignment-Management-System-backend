@@ -4,25 +4,29 @@ const {
   createAssignment,
   getAssignments,
   getAssignmentById,
-  updateAssignment,  // ✅ Added update function
-  deleteAssignment,  // ✅ Added delete function
+  updateAssignment,
+  deleteAssignment,
+  submitAssignment,
 } = require("../controllers/assignmentController");
 
 const router = express.Router();
 
-// ✅ Only Admins (Lecturers) can create assignments
-router.post("/create", authMiddleware, authorizeRoles("admin"), createAssignment);
+// ✅ Admins & Lecturers can create assignments
+router.post("/create", authMiddleware, authorizeRoles("admin", "lecturer"), createAssignment);
 
-// ✅ Students & Admins can view all assignments
+// ✅ Students submit assignments
+router.post("/:id/submit", authMiddleware, authorizeRoles("student"), submitAssignment);
+
+// ✅ Students, Admins & Lecturers can view all assignments
 router.get("/", authMiddleware, getAssignments);
 
 // ✅ Get a single assignment by ID
 router.get("/:id", authMiddleware, getAssignmentById);
 
-// ✅ Update an assignment (Admin only)
-router.put("/:id", authMiddleware, authorizeRoles("admin"), updateAssignment);
+// ✅ Admins & Lecturers can update assignments
+router.put("/:id", authMiddleware, authorizeRoles("admin", "lecturer"), updateAssignment);
 
-// ✅ Delete an assignment (Admin only)
-router.delete("/:id", authMiddleware, authorizeRoles("admin"), deleteAssignment);
+// ✅ Admins & Lecturers can delete assignments
+router.delete("/:id", authMiddleware, authorizeRoles("admin", "lecturer"), deleteAssignment);
 
 module.exports = router;
