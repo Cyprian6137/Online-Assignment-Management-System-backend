@@ -1,8 +1,9 @@
+// controllers/submissionController.js
 const Submission = require("../models/Submission");
 const Assignment = require("../models/Assignment");
 
-// ✅ Submit an assignment (Students)
-exports.submitAssignment = async (req, res) => {
+// Submit an assignment (Students)
+const submitAssignment = async (req, res) => {
   try {
     const { assignmentId, content } = req.body;
 
@@ -36,8 +37,8 @@ exports.submitAssignment = async (req, res) => {
   }
 };
 
-// ✅ Get submissions by assignment (Admins & Lecturers)
-exports.getSubmissionsByAssignment = async (req, res) => {
+// Get submissions by assignment (Admins & Lecturers)
+const getSubmissionsByAssignment = async (req, res) => {
   try {
     const { assignmentId } = req.params;
     const assignment = await Assignment.findById(assignmentId);
@@ -64,8 +65,8 @@ exports.getSubmissionsByAssignment = async (req, res) => {
   }
 };
 
-// ✅ Get all submissions (Admins & Lecturers)
-exports.getAllSubmissions = async (req, res) => {
+// Get all submissions (Admins & Lecturers)
+const getAllSubmissions = async (req, res) => {
   try {
     if (!["admin", "lecturer"].includes(req.user.role)) {
       return res.status(403).json({ message: "Access denied." });
@@ -85,16 +86,16 @@ exports.getAllSubmissions = async (req, res) => {
   }
 };
 
-// ✅ Grade a submission (Admins & Lecturers)
-exports.gradeSubmission = async (req, res) => {
+// Grade a submission (Admins & Lecturers)
+const gradeSubmission = async (req, res) => {
+  const { submissionId } = req.params;
+  const { grade, feedback } = req.body;
+
+  if (grade < 0 || grade > 100) {
+    return res.status(400).json({ message: "Grade must be between 0 and 100" });
+  }
+
   try {
-    const { submissionId } = req.params;
-    const { grade, feedback } = req.body;
-
-    if (grade < 0 || grade > 100) {
-      return res.status(400).json({ message: "Grade must be between 0 and 100" });
-    }
-
     const submission = await Submission.findById(submissionId).populate("assignmentId");
     if (!submission) {
       return res.status(404).json({ message: "Submission not found" });
@@ -107,7 +108,25 @@ exports.gradeSubmission = async (req, res) => {
       return res.status(403).json({ message: "You can only grade your own assignments" });
     }
 
+    // Determine letter grade based on numeric grade
+    let letterGrade;
+    if (grade >= 80) {
+      letterGrade = 'A';
+    } else if (grade >= 70) {
+      letterGrade = 'B';
+    } else if (grade >= 60) {
+      letterGrade = 'C';
+    } else if (grade >= 50) {
+      letterGrade = 'D';
+    } else if (grade >= 40) {
+      letterGrade = 'E';
+    } else {
+      letterGrade = 'Fail';
+    }
+
+    // Update submission with grade, letterGrade, and feedback
     submission.grade = grade;
+    submission.letterGrade = letterGrade;
     submission.feedback = feedback;
     await submission.save();
 
@@ -117,8 +136,8 @@ exports.gradeSubmission = async (req, res) => {
   }
 };
 
-// ✅ Delete a submission (Only before the deadline)
-exports.deleteSubmission = async (req, res) => {
+// Delete a submission (Only before the deadline)
+const deleteSubmission = async (req, res) => {
   try {
     const { submissionId } = req.params;
     const submission = await Submission.findById(submissionId);
@@ -146,18 +165,28 @@ exports.deleteSubmission = async (req, res) => {
   }
 };
 
-// ✅ Get graded submissions for the logged-in student
-exports.getMyResults = async (req, res) => {
+// Get graded submissions for the logged-in student
+const getMyResults = async (req, res) => {
   try {
     const submissions = await Submission.find({ 
       studentId: req.user.id, 
       grade: { $ne: null }
     })
     .populate("assignmentId", "title")
-    .select("assignmentId grade feedback");
+    .select("assignmentId grade letterGrade feedback"); // Include letterGrade in the select
 
     res.json(submissions);
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
+};
+
+// Expose functions directly
+module.exports = {
+  submitAssignment,
+  getSubmissionsByAssignment,
+  getAllSubmissions,
+  gradeSubmission,
+  deleteSubmission,
+  getMyResults,
 };

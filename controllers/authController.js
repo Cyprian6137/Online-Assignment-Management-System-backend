@@ -108,3 +108,20 @@ exports.deleteUser = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+exports.updateUser = async (req, res) => {
+  const { name, email, role } = req.body;
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { name, email, role },
+      { new: true, runValidators: true }
+    );
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json({ message: "User updated successfully", user });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
