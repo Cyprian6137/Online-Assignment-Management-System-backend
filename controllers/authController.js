@@ -1,7 +1,6 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const { validationResult } = require('express-validator');
 
 // Generate JWT Token
 const generateToken = (user) => {
@@ -12,13 +11,19 @@ const generateToken = (user) => {
   );
 };
 
-// Register a new user (Admin or Student)
+// Register a new user (Admin, Student, or Lecturer)
 exports.registerUser = async (req, res) => {
   const { name, email, password, role } = req.body;
 
   // Validate input
   if (!name || !email || !password || !role) {
     return res.status(400).json({ message: 'All fields are required' });
+  }
+
+  // Validate role
+  const validRoles = ['admin', 'student', 'lecturer'];
+  if (!validRoles.includes(role)) {
+    return res.status(400).json({ message: 'Invalid role' });
   }
 
   try {
@@ -69,10 +74,11 @@ exports.loginUser = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
-// Get all students and lecturers
+
+// Get all users (Students, Lecturers, and Admins)
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = await User.find({ role: { $in: ['student', 'lecturer'] } }).select('-password');
+    const users = await User.find({ role: { $in: ['student', 'lecturer', 'admin'] } }).select('-password');
     res.json(users);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -80,35 +86,6 @@ exports.getAllUsers = async (req, res) => {
 };
 
 // Update user details
-exports.updateUser = async (req, res) => {
-  const { name, email } = req.body;
-
-  try {
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    user.name = name || user.name;
-    user.email = email || user.email;
-    await user.save();
-
-    res.json({ message: 'User updated successfully', user });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
-// Delete user
-exports.deleteUser = async (req, res) => {
-  try {
-    const user = await User.findByIdAndDelete(req.params.id);
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    res.json({ message: 'User deleted successfully' });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
 exports.updateUser = async (req, res) => {
   const { name, email, role } = req.body;
   try {
@@ -123,5 +100,17 @@ exports.updateUser = async (req, res) => {
     res.json({ message: "User updated successfully", user });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// Delete user
+exports.deleteUser = async (req, res) => {
+  try {
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

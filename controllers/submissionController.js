@@ -1,6 +1,5 @@
-// controllers/submissionController.js
-const Submission = require("../models/Submission");
-const Assignment = require("../models/Assignment");
+const Submission = require('../models/Submission');
+const Assignment = require('../models/Assignment');
 
 // Submit an assignment (Students)
 const submitAssignment = async (req, res) => {
@@ -37,7 +36,7 @@ const submitAssignment = async (req, res) => {
   }
 };
 
-// Get submissions by assignment (Admins & Lecturers)
+// Get submissions by assignment (Only creator lecturer or admin)
 const getSubmissionsByAssignment = async (req, res) => {
   try {
     const { assignmentId } = req.params;
@@ -46,47 +45,50 @@ const getSubmissionsByAssignment = async (req, res) => {
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    if (req.user.role === "admin" || req.user.role === "lecturer") {
+    // Check if requester is admin or the lecturer who created the assignment
+    if (
+      req.user.role === "admin" ||
+      (req.user.role === "lecturer" && assignment.createdBy.toString() === req.user.id)
+    ) {
       const submissions = await Submission.find({ assignmentId })
         .populate("studentId", "name email");
       return res.status(200).json(submissions);
     }
 
-    const studentSubmission = await Submission.findOne({ assignmentId, studentId: req.user.id })
-      .populate("studentId", "name email");
-
-    if (!studentSubmission) {
-      return res.status(403).json({ message: "No submission found for you." });
-    }
-
-    res.status(200).json(studentSubmission);
+    return res.status(403).json({ message: "You are not authorized to view these submissions." });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Get all submissions (Admins & Lecturers)
+// Get all submissions (Admins see all; Lecturers only see their own)
 const getAllSubmissions = async (req, res) => {
   try {
-    if (!["admin", "lecturer"].includes(req.user.role)) {
-      return res.status(403).json({ message: "Access denied." });
+    if (req.user.role === "admin") {
+      const submissions = await Submission.find()
+        .populate("studentId", "name email")
+        .populate("assignmentId", "title dueDate");
+      return res.status(200).json(submissions);
     }
 
-    const assignments = req.user.role === "admin"
-      ? await Assignment.find().select("_id")
-      : await Assignment.find({ createdBy: req.user.id }).select("_id");
+    if (req.user.role === "lecturer") {
+      const assignments = await Assignment.find({ createdBy: req.user.id }).select("_id");
+      const assignmentIds = assignments.map(a => a._id);
 
-    const submissions = await Submission.find({ assignmentId: { $in: assignments.map(a => a._id) } })
-      .populate("studentId", "name email")
-      .populate("assignmentId", "title dueDate");
+      const submissions = await Submission.find({ assignmentId: { $in: assignmentIds } })
+        .populate("studentId", "name email")
+        .populate("assignmentId", "title dueDate");
 
-    res.status(200).json(submissions);
+      return res.status(200).json(submissions);
+    }
+
+    return res.status(403).json({ message: "Access denied." });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Grade a submission (Admins & Lecturers)
+// Grade a submission (Only for creator lecturer or admin)
 const gradeSubmission = async (req, res) => {
   const { submissionId } = req.params;
   const { grade, feedback } = req.body;
@@ -101,30 +103,25 @@ const gradeSubmission = async (req, res) => {
       return res.status(404).json({ message: "Submission not found" });
     }
 
-    if (req.user.role !== "admin" && req.user.role !== "lecturer") {
-      return res.status(403).json({ message: "Only lecturers and admins can grade submissions" });
-    }
-    if (req.user.role === "lecturer" && submission.assignmentId.createdBy.toString() !== req.user.id) {
-      return res.status(403).json({ message: "You can only grade your own assignments" });
+    const assignment = submission.assignmentId;
+
+    // Only admin or the assignment creator can grade
+    if (
+      req.user.role !== "admin" &&
+      !(req.user.role === "lecturer" && assignment.createdBy.toString() === req.user.id)
+    ) {
+      return res.status(403).json({ message: "Not authorized to grade this submission." });
     }
 
     // Determine letter grade based on numeric grade
     let letterGrade;
-    if (grade >= 80) {
-      letterGrade = 'A';
-    } else if (grade >= 70) {
-      letterGrade = 'B';
-    } else if (grade >= 60) {
-      letterGrade = 'C';
-    } else if (grade >= 50) {
-      letterGrade = 'D';
-    } else if (grade >= 40) {
-      letterGrade = 'E';
-    } else {
-      letterGrade = 'Fail';
-    }
+    if (grade >= 80) letterGrade = 'A';
+    else if (grade >= 70) letterGrade = 'B';
+    else if (grade >= 60) letterGrade = 'C';
+    else if (grade >= 50) letterGrade = 'D';
+    else if (grade >= 40) letterGrade = 'E';
+    else letterGrade = 'Fail';
 
-    // Update submission with grade, letterGrade, and feedback
     submission.grade = grade;
     submission.letterGrade = letterGrade;
     submission.feedback = feedback;
@@ -173,7 +170,7 @@ const getMyResults = async (req, res) => {
       grade: { $ne: null }
     })
     .populate("assignmentId", "title")
-    .select("assignmentId grade letterGrade feedback"); // Include letterGrade in the select
+    .select("assignmentId grade letterGrade feedback");
 
     res.json(submissions);
   } catch (error) {
@@ -181,7 +178,37 @@ const getMyResults = async (req, res) => {
   }
 };
 
-// Expose functions directly
+// Get all assignment IDs the logged-in student has submitted
+const getMySubmissions = async (req, res) => {
+  try {
+    const submissions = await Submission.find({ studentId: req.user.id }).select("assignmentId");
+    const submittedAssignmentIds = submissions.map((s) => s.assignmentId.toString());
+
+    res.status(200).json({ submittedAssignmentIds });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// New: Get all assignments with submission status for logged-in student
+const getAssignmentsWithSubmissionStatus = async (req, res) => {
+  try {
+    const assignments = await Assignment.find().lean();
+
+    const submissions = await Submission.find({ studentId: req.user.id }).select("assignmentId");
+    const submittedAssignmentIds = new Set(submissions.map((s) => s.assignmentId.toString()));
+
+    const assignmentsWithStatus = assignments.map((assignment) => ({
+      ...assignment,
+      status: submittedAssignmentIds.has(assignment._id.toString()) ? "Submitted" : "Not Submitted",
+    }));
+
+    res.status(200).json(assignmentsWithStatus);
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 module.exports = {
   submitAssignment,
   getSubmissionsByAssignment,
@@ -189,4 +216,6 @@ module.exports = {
   gradeSubmission,
   deleteSubmission,
   getMyResults,
+  getMySubmissions,
+  getAssignmentsWithSubmissionStatus,  // new export
 };

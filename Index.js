@@ -7,7 +7,9 @@ const connectDB = require('./config/db');
 const authRoutes = require('./Routes/authRoutes');
 const assignmentRoutes = require('./Routes/assignmentRoutes');
 const submissionRoutes = require('./Routes/submissionRoutes');
-
+const dashboardRoutes = require('./Routes/dashboard');
+const lecturerRoutes = require('./Routes/lecturerRoutes'); 
+const studentRoutes = require('./Routes/studentRoutes');
 const app = express();
 
 // Middleware
@@ -32,6 +34,9 @@ connectDB();
 app.use('/api/auth', authRoutes);
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/submissions', submissionRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/lecturer', lecturerRoutes);
+app.use('/api/students', studentRoutes);
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

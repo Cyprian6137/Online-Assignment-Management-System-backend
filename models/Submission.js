@@ -1,4 +1,3 @@
-// models/Submission.js
 const mongoose = require('mongoose');
 
 const submissionSchema = new mongoose.Schema({
@@ -6,34 +5,34 @@ const submissionSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Assignment',
     required: true,
-    index: true // Index for performance
+    index: true, // Index for performance
   },
   studentId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
-    index: true // Index for performance
+    index: true, // Index for performance
   },
   content: {
     type: String,
-    required: true
+    required: true,
   },
   grade: {
     type: Number, // Grade out of 100
     min: 0,
-    max: 100
+    max: 100,
   },
   letterGrade: {
     type: String,
     enum: ['A', 'B', 'C', 'D', 'E', 'Fail'], // Optional: restrict to valid letter grades
   },
   feedback: {
-    type: String
+    type: String,
   },
   submittedAt: {
     type: Date,
-    default: Date.now
-  }
+    default: Date.now,
+  },
 });
 
 module.exports = mongoose.model('Submission', submissionSchema);
