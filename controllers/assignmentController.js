@@ -33,10 +33,15 @@ exports.createAssignment = async (req, res) => {
   }
 };
 
-// ✅ Get all assignments
+// ✅ Get all assignments created by the logged-in lecturer
 exports.getAssignments = async (req, res) => {
   try {
-    const assignments = await Assignment.find().populate("createdBy", "name email role");
+    let assignments;
+    if (req.user.role === "lecturer") {
+      assignments = await Assignment.find({ createdBy: req.user.id }).populate("createdBy", "name email role");
+    } else {
+      assignments = await Assignment.find().populate("createdBy", "name email role");
+    }
     res.status(200).json(assignments);
   } catch (error) {
     console.error("Error fetching assignments:", error.message);
